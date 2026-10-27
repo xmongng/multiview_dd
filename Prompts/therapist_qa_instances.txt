@@ -1,0 +1,26 @@
+The user said the following sentence:
+"{sentence}"
+
+{emotion_info}
+{logic_info}
+{behavior_info}
+
+Refer to the definitions of the following 10 cognitive distortion types and output all distortion types and salience scores that can be identified in the sentence above. You must select only from the following 10 types: All-or-nothing thinking, Overgeneralization, Mental filter, Emotional reasoning, Labeling, Magnification, Should statements, Fortune-telling, Mind Reading, and Personalization. Do not include any other types.
+
+Identify all cognitive distortions present in the sentence using the predefined types described in Appendix C, as shown in Table 14.
+
+Return all detected cognitive distortions in the following format:
+[
+  {"type": "Cognitive distortion type (must be chosen from the 10 types above)", "salience score": 0.0, "relevant_text": "Relevant excerpt from the sentence"}
+]
+
+Instructions:
+- Cognitive distortion types must be written in English name only.
+- Example: "All-or-nothing thinking" (Correct), "All-or-nothing thinking (black and white thinking)" (Incorrect).
+- Cognitive distortion types must be selected ONLY from the 10 types provided: All-or-nothing thinking, Overgeneralization, Mental filter, Emotional reasoning, Labeling, Magnification, Should statements, Fortune-telling, Mind Reading, and Personalization. Do not use any other types.
+- For each distortion, extract a short and relevant excerpt from the sentence that clearly reflects the distortion.
+
+Strict output format requirements:
+1. Return only a JSON array ([]), with no explanations or additional JSON objects.
+2. The array must include all detected cognitive distortion objects.
+3. Each object must contain exactly three fields: "type", "salience score", and "relevant_text".

@@ -358,6 +358,7 @@ def run_experiment(
     output_dir=".",
     instance_start_idx=2,
     device=torch.device("cpu"),
+    experiment_seed=42,
 ):
     print(f"\n{'=' * 60}")
     print(f"Dataset: {mode} | File: {npz_path}")
@@ -412,7 +413,7 @@ def run_experiment(
     print(f"Instance start index  : {instance_start_idx}")
     print(f"Device                : {device}")
 
-    seeds = random.sample(range(1000), NUM_RUNS)
+    seeds = random.Random(experiment_seed).sample(range(1000), NUM_RUNS)
     print(f"Random seeds for this experiment: {seeds}")
 
     val_metrics_all = []
@@ -528,6 +529,10 @@ def parse_args():
         help="Path to ELB-processed .npz file",
     )
 
+    parser.add_argument("--num_runs", type=int, default=NUM_RUNS)
+    parser.add_argument("--epochs", type=int, default=NUM_EPOCHS)
+    parser.add_argument("--experiment_seed", type=int, default=42)
+
     parser.add_argument(
         "--no_elb",
         required=True,
@@ -543,9 +548,9 @@ def parse_args():
     parser.add_argument(
         "--instance_start_idx",
         type=int,
-        default=2,
+        default=1,
         choices=[1, 2],
-        help="Index where instance embeddings start in the embeddings array",
+        help="Index where instance embeddings start; build_embeddings.py uses 1",
     )
 
     parser.add_argument(
@@ -576,6 +581,9 @@ def resolve_device(device_arg):
 if __name__ == "__main__":
     args = parse_args()
 
+    NUM_RUNS = args.num_runs
+    NUM_EPOCHS = args.epochs
+
     os.makedirs(args.output_dir, exist_ok=True)
 
     device = resolve_device(args.device)
@@ -592,4 +600,5 @@ if __name__ == "__main__":
             output_dir=args.output_dir,
             instance_start_idx=args.instance_start_idx,
             device=device,
+            experiment_seed=args.experiment_seed,
         )

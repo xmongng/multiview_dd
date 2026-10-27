@@ -16,6 +16,159 @@ Each utterance is decomposed into **Emotion, Logic, and Behavior (ELB)** compone
 
 ---
 
+## ELB Extraction
+
+The zero-shot ELB extraction prompt from Appendix F of the paper is included at
+[`Prompts/elb_extraction.txt`](Prompts/elb_extraction.txt). The `{sentence}`
+placeholder is replaced by `Code/extract_elb.py` for each input utterance.
+
+The extraction script currently expects an Excel workbook containing a
+`Generated Story` column:
+
+```bash
+python Code/extract_elb.py \
+  --input path/to/input.xlsx \
+  --prompt Prompts/elb_extraction.txt \
+  --output path/to/output_with_elb.xlsx
+```
+
+Set `OPENAI_API_KEY` in the environment or a local `.env` file before running
+the command. The included `Data.csv` uses the column name `Related Sentence`,
+so it must be converted or the script must be adapted before it can be used
+directly as extraction input.
+
+---
+
+## Therapist QA Reproduction with NVIDIA NIM
+
+Therapist QA is the smaller dataset evaluated in the paper. The labeled source
+contains 2,530 patient questions. Following the paper, preprocessing removes
+the 933 `No Distortion` examples and retains the primary (`Dominant
+Distortion`) label, producing exactly 1,597 examples across 10 classes.
+
+The reproduction uses the paper's core algorithm and hyperparameters but
+replaces its three proprietary inference models with three NVIDIA-hosted models
+of increasing total parameter count:
+
+| Role | NVIDIA model ID | Approximate size |
+|---|---|---:|
+| Small | `openai/gpt-oss-20b` | 21B total / 3.6B active |
+| Medium | `google/gemma-4-31b-it` | 33B |
+| Large | `nvidia/nemotron-3-super-120b-a12b` | 124B total / 12B active |
+
+All three use NVIDIA's OpenAI-compatible endpoint. The ELB extraction stage
+uses GPT-OSS 20B; all three models independently generate the MIL instances.
+Model IDs can be overridden from the command line.
+
+> **Data handling:** Therapist QA contains sensitive mental-health narratives.
+> NVIDIA states that inputs and outputs sent to its prototype API may be logged.
+> Review the current NVIDIA API terms and your research ethics requirements
+> before submitting the full dataset. Use self-hosted NIM endpoints if external
+> processing is not permitted.
+
+### Setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements_MVACD.txt
+```
+
+Set `NVIDIA_API_KEY` in `.env`, export it in the shell, or pass the existing
+environment file explicitly with `--env-file`. API keys are never copied into
+the repository.
+
+### 1. Prepare the paper dataset
+
+The command downloads the labeled public Kaggle release and verifies the exact
+class distribution reported by the paper:
+
+```bash
+python Code/prepare_therapist_qa.py \
+  --output Data/therapist_qa.csv
+```
+
+For an offline run, download the dataset ZIP separately and pass it through
+`--input path/to/cognitive-distortion-dataset.zip`.
+
+### 2. Extract ELB components
+
+Start with `--limit 1` as an inexpensive API smoke test. Remove it for all
+1,597 examples. Output is append-only JSONL, so interrupted runs resume without
+repeating completed examples.
+
+NVIDIA's free prototype endpoints can queue requests for several minutes. Both
+generation commands therefore default to a 600-second request timeout, which
+can be changed with `--timeout`.
+
+```bash
+python Code/extract_elb_nvidia.py \
+  --input Data/therapist_qa.csv \
+  --output Artifacts/therapist_qa_elb.jsonl \
+  --env-file ../llm-detoxification/.env \
+  --limit 1
+```
+
+### 3. Infer instances with all three models
+
+```bash
+python Code/infer_instances_nvidia.py \
+  --input Artifacts/therapist_qa_elb.jsonl \
+  --output Artifacts/therapist_qa_instances_elb.jsonl \
+  --env-file ../llm-detoxification/.env \
+  --limit 1
+```
+
+For the paper's no-ELB comparison, run the same inputs with `--without-elb`:
+
+```bash
+python Code/infer_instances_nvidia.py \
+  --input Artifacts/therapist_qa_elb.jsonl \
+  --output Artifacts/therapist_qa_instances_no_elb.jsonl \
+  --env-file ../llm-detoxification/.env \
+  --without-elb \
+  --limit 1
+```
+
+### 4. Build MiniLM tensors
+
+The paper embeds the original utterance and each `type: relevant_text`
+instance with `sentence-transformers/all-MiniLM-L12-v2`. Bags are zero-padded,
+and padded salience values are zero.
+
+```bash
+python Code/build_embeddings.py \
+  --input Artifacts/therapist_qa_instances_elb.jsonl \
+  --output Artifacts/therapist_qa_elb.npz
+
+python Code/build_embeddings.py \
+  --input Artifacts/therapist_qa_instances_no_elb.jsonl \
+  --output Artifacts/therapist_qa_no_elb.npz
+```
+
+### 5. Train the paper's MIL architecture
+
+Use one run and ten epochs to validate the workflow, then remove those two
+overrides for the paper settings of ten runs and up to 100 epochs:
+
+```bash
+python Code/train.py \
+  --elb Artifacts/therapist_qa_elb.npz \
+  --no_elb Artifacts/therapist_qa_no_elb.npz \
+  --instance_start_idx 1 \
+  --num_runs 1 \
+  --epochs 10 \
+  --experiment_seed 42 \
+  --output_dir Results/smoke
+```
+
+Replacing the three LLMs makes this a controlled reproduction of the method,
+not an exact reproduction of the paper's reported scores. Full generation makes
+approximately 6,388 API calls: 1,597 for ELB and 4,791 for three-model instance
+inference, excluding retries.
+
+---
+
 ## Datasets
 
 ### KoACD (Korean Adolescent Cognitive Distortion Dataset)
